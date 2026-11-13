@@ -1,7 +1,9 @@
 import json
+import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -17,11 +19,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 class ReadingsApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        cls.temp_dir = tempfile.TemporaryDirectory(prefix="cgm-api-tests-")
+        cls.database_path = Path(cls.temp_dir.name) / "api-tests.sqlite3"
+
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             cls.port = sock.getsockname()[1]
 
         cls.base_url = f"http://127.0.0.1:{cls.port}"
+        environment = os.environ.copy()
+        environment["CGM_TESTING"] = "1"
+        environment["CGM_DATABASE_URL"] = f"sqlite:///{cls.database_path}"
         cls.server = subprocess.Popen(
             [
                 sys.executable,
@@ -36,6 +44,7 @@ class ReadingsApiTests(unittest.TestCase):
                 str(cls.port),
             ],
             cwd=PROJECT_ROOT,
+            env=environment,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -43,6 +52,7 @@ class ReadingsApiTests(unittest.TestCase):
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if cls.server.poll() is not None:
+                cls.temp_dir.cleanup()
                 raise RuntimeError("Uvicorn exited before the test server was ready")
             try:
                 with urllib.request.urlopen(f"{cls.base_url}/health", timeout=1):
@@ -52,6 +62,7 @@ class ReadingsApiTests(unittest.TestCase):
 
         cls.server.terminate()
         cls.server.wait(timeout=5)
+        cls.temp_dir.cleanup()
         raise RuntimeError("Timed out waiting for the test server to start")
 
     @classmethod
@@ -59,6 +70,7 @@ class ReadingsApiTests(unittest.TestCase):
         if cls.server.poll() is None:
             cls.server.terminate()
             cls.server.wait(timeout=5)
+        cls.temp_dir.cleanup()
 
     def post_reading(self, payload: dict[str, object]) -> tuple[int, dict[str, object]]:
         request = urllib.request.Request(
@@ -131,6 +143,11 @@ class ReadingsApiTests(unittest.TestCase):
 
         self.assertEqual(status_code, 201)
         self.assertEqual(body, payload)
+        self.assertTrue(self.database_path.is_file())
+        self.assertNotEqual(
+            self.database_path.resolve(),
+            (PROJECT_ROOT / "data" / "cgm_assistant.sqlite3").resolve(),
+        )
 
     def test_returns_reading_history_filtered_by_run_id(self) -> None:
         payload = self.make_reading()

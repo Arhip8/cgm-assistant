@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,9 @@ from external.kirill_db import db as kirill_db
 
 class Database:
     def __init__(self, url: str | None = None) -> None:
+        if url is None and os.environ.get("CGM_TESTING") == "1":
+            url = os.environ.get("CGM_DATABASE_URL", "sqlite:///:memory:")
+
         self.url = url or kirill_db.DB_URL
         if url is None:
             self.engine = kirill_db.engine

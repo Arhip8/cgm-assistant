@@ -1,3 +1,7 @@
+import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +16,55 @@ from app.services.reading_store import ReadingConflictError
 from external.kirill_db import db as models
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 class PersistentDatabaseIntegrationTests(unittest.TestCase):
+    def test_test_mode_never_defaults_to_the_working_database(self) -> None:
+        environment = os.environ.copy()
+        environment.pop("CGM_DATABASE_URL", None)
+        environment["CGM_TESTING"] = "1"
+        environment["PYTHONPATH"] = os.pathsep.join(
+            filter(
+                None,
+                (
+                    str(PROJECT_ROOT / "backend"),
+                    environment.get("PYTHONPATH", ""),
+                ),
+            )
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json; "
+                    "from app.db.database import Database; "
+                    "from external.kirill_db import db; "
+                    "database = Database(); "
+                    "print(json.dumps({"
+                    "'backend': database.url, "
+                    "'kirill': db.DB_URL, "
+                    "'kirill_engine_database': db.engine.url.database"
+                    "}))"
+                ),
+            ],
+            cwd=PROJECT_ROOT,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        configuration = json.loads(result.stdout)
+        self.assertEqual(
+            configuration,
+            {
+                "backend": "sqlite:///:memory:",
+                "kirill": "sqlite:///:memory:",
+                "kirill_engine_database": ":memory:",
+            },
+        )
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temp_dir.name) / "integration.sqlite3"
