@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# Frontend
+node_modules/
+dist/
+
+# Editor and OS
+.DS_Store
+.vscode/
+
+# Datasets and archives
+data/
+*.csv
+*.zip
+
+# Local secrets and keys
+*.pem
+*.key
