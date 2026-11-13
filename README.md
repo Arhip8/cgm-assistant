@@ -13,8 +13,8 @@
 - `backend/app/api/routes/` — HTTP-маршруты `GET /health`,
   `/api/v1/readings` и `/api/v1/events`.
 - `backend/app/api/schemas/` — Pydantic-схемы API.
-- `backend/app/services/` — временное хранение измерений и событий, а также
-  координация состояния анализатора и правил уведомлений.
+- `backend/app/services/` — обработка измерений, событий, состояния анализатора
+  и правил уведомлений.
 - `backend/app/integrations/algorithm.py` — адаптер к демонстрационному
   алгоритму.
 - `external/hackathon_event_analyzer/` — исходный модуль алгоритма и его тесты.
@@ -22,9 +22,11 @@
 - `frontend/vite.config.ts` — dev proxy `/api` на локальный FastAPI.
 - `backend/app/db/database.py` — конфигурация SQLite и фабрика сессий.
 - `frontend/` — React Dashboard на Vite и TypeScript.
-- `simulator/` — модуль симулятора, разрабатываемый отдельно.
+- `simulator/` — CSV-симулятор и клиент POST `/api/v1/readings`.
 - `data/` — данные проекта.
 - `tests/` — тесты проекта.
+- `data/kristina/` — локальные исходные материалы симулятора; каталог не
+  добавляется в Git.
 
 ## Запуск backend
 
@@ -92,11 +94,51 @@ curl -X POST \
 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) и
 [`docs/ALGORITHM_CONTRACT.md`](docs/ALGORITHM_CONTRACT.md).
 
+### Запуск исторического симулятора
+
+Укажите фактический часовой пояс исходных дат без offset. Для CSV Кристины
+`EventDateTime` задан без часового пояса, поэтому параметр `--timezone`
+обязателен. Симулятор не угадывает его. `Europe/Moscow` ниже приведён только
+как пример: до реального воспроизведения подтвердите зону исходной выгрузки и
+замените значение, если она отличается.
+
+```bash
+python -m simulator \
+  --csv data/kristina/cleaned_glucose_data.csv \
+  --timezone Europe/Moscow \
+  --run-id kristina-demo \
+  --speed-multiplier 60 \
+  --max-records 100
+```
+
+`--speed-multiplier` меняет только задержки между запросами, временные метки
+из CSV остаются исходными. При сетевой ошибке или конфликте симулятор выводит
+ошибку и оставляет текущий `source_index` для повторной отправки. Для остановки
+и продолжения в одном процессе используйте `pause()`, `resume()` и `stop()` на
+экземпляре `GlucoseSimulator`; следующий вызов `run_simulation()` продолжит с
+текущего индекса и сохранит тот же `run_id`. После перезапуска процесса укажите
+тот же `--run-id` и позицию следующей CSV-строки из результата как
+`--start-index`, например:
+
+```bash
+python -m simulator \
+  --csv data/kristina/cleaned_glucose_data.csv \
+  --timezone Europe/Moscow \
+  --run-id kristina-demo \
+  --start-index 100
+```
+
+Из CSV отправляются только `run_id`, `source_index`, `measured_at` и
+`glucose_mmol_l`. Готовые `Anomaly_Type` и `Action_Recommended` не передаются:
+события определяет серверный демонстрационный алгоритм.
+
 ### Тесты
 
 ```bash
 PYTHONPATH=backend python -m unittest discover -s tests -v
 ```
+
+Тесты синтетического CSV-симулятора входят в этот набор.
 
 Тесты исходной SQLAlchemy-схемы запускаются из её каталога:
 
