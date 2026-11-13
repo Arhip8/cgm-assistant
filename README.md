@@ -135,7 +135,7 @@ python -m simulator \
 ### Тесты
 
 ```bash
-PYTHONPATH=backend python -m unittest discover -s tests -v
+CGM_TESTING=1 PYTHONPATH=backend python -m unittest discover -s tests -v
 ```
 
 Тесты синтетического CSV-симулятора входят в этот набор.
@@ -144,13 +144,13 @@ PYTHONPATH=backend python -m unittest discover -s tests -v
 
 ```bash
 cd external/kirill_db
-python -m pytest -v
+CGM_TESTING=1 python -m pytest -v
 ```
 
 Оригинальные тесты внешнего алгоритма запускаются отдельно:
 
 ```bash
-PYTHONPATH=external/hackathon_event_analyzer \
+CGM_TESTING=1 PYTHONPATH=external/hackathon_event_analyzer \
   python external/hackathon_event_analyzer/tests.py
 ```
 
