@@ -32,6 +32,14 @@ _NOTIFICATION_RULES: dict[str, tuple[str, str]] = {
 }
 
 
+def notification_content(event: AnalysisEvent) -> tuple[str, str] | None:
+    rule = _NOTIFICATION_RULES.get(event.event_type)
+    if event.phase != EventPhase.STARTED or rule is None:
+        return None
+    title, text_template = rule
+    return title, text_template.format(value=f"{event.glucose_mmol_l:g}")
+
+
 class NotificationNotFoundError(Exception):
     pass
 
@@ -49,19 +57,19 @@ class InMemoryNotificationService:
         created: list[InformationNotification] = []
         with self._lock:
             for event in events:
-                rule = _NOTIFICATION_RULES.get(event.event_type)
-                if event.phase != EventPhase.STARTED or rule is None:
+                content = notification_content(event)
+                if content is None:
                     continue
                 if event.event_id in self._by_event_id:
                     continue
 
-                title, text_template = rule
+                title, text = content
                 notification = InformationNotification(
                     id=str(uuid5(NAMESPACE_URL, f"cgm-assistant:event:{event.event_id}")),
                     run_id=event.run_id,
                     event_id=event.event_id,
                     title=title,
-                    text=text_template.format(value=f"{event.glucose_mmol_l:g}"),
+                    text=text,
                     created_at=datetime.now(timezone.utc),
                     status=NotificationStatus.UNREAD,
                     acknowledged_at=None,

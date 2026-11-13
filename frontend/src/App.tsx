@@ -96,7 +96,7 @@ function App() {
 
         <footer className="dashboard-footer">
           <span>CGM Assistant</span>
-          <span>Демонстрационный прототип · данные хранятся временно</span>
+          <span>Демонстрационный прототип · данные сохраняются в SQLite</span>
         </footer>
       </main>
     </div>
