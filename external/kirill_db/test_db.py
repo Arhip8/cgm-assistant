@@ -781,7 +781,7 @@ class TestEventRecovery:
         ev.glucose_mmol_l = 3.2
         ev.details = {"trigger": "low", "samples": [3.4, 3.2]}
         ev.origin = "algorithm"
-        ev.priority_hint = 2
+        ev.priority_hint = "info"
         assert save_tick(s1, run_id=run_id,
                          reading=GlucoseReading(run_id=run_id, source_index=0,
                                                 measured_at=measured, value_mmol_l=3.2),
@@ -799,7 +799,7 @@ class TestEventRecovery:
             assert got.glucose_mmol_l == pytest.approx(3.2)
             assert got.details == {"trigger": "low", "samples": [3.4, 3.2]}
             assert got.origin == "algorithm"
-            assert got.priority_hint == 2
+            assert got.priority_hint == "info"
         finally:
             s2.close()
             eng2.dispose()
@@ -852,7 +852,7 @@ def test_glucose_event_full_fields(session):
         glucose_mmol_l=11.5,
         details={"reason": "high carbs", "confidence": 0.95},
         origin="algorithm",
-        priority_hint=10,
+        priority_hint="info",
     )
     session.add(event)
     session.commit()
@@ -868,4 +868,4 @@ def test_glucose_event_full_fields(session):
     assert loaded_event.glucose_mmol_l == 11.5
     assert loaded_event.details == {"reason": "high carbs", "confidence": 0.95}
     assert loaded_event.origin == "algorithm"
-    assert loaded_event.priority_hint == 10
+    assert loaded_event.priority_hint == "info"

@@ -1,5 +1,7 @@
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float,
@@ -94,6 +96,7 @@ class GlucoseReading(Base):
     run_id = Column(String(36), ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     source_index = Column(Integer, nullable=False)
     measured_at = Column(DateTime, nullable=False, index=True)
+    source_measured_at = Column(Text, nullable=True)
     value_mmol_l = Column(Float, nullable=False)
     received_at = Column(DateTime, default=utcnow, nullable=False)
 
@@ -115,12 +118,15 @@ class GlucoseEvent(Base):
     severity = Column(Text, nullable=False)
     status = Column(Text, nullable=False)
     started_at = Column(DateTime, nullable=False)
+    source_started_at = Column(Text, nullable=True)
     ended_at = Column(DateTime, nullable=True)
+    source_ended_at = Column(Text, nullable=True)
     measured_at = Column(DateTime, nullable=True)
+    source_measured_at = Column(Text, nullable=True)
     glucose_mmol_l = Column(Float, nullable=True)
     details = Column(MutableDict.as_mutable(JSON), nullable=True)
     origin = Column(Text, nullable=True)
-    priority_hint = Column(Integer, nullable=True)
+    priority_hint = Column(String(32), nullable=True)
 
     simulation_run = relationship("SimulationRun", back_populates="events")
     notifications = relationship("Notification", back_populates="glucose_event", cascade="all, delete-orphan")
@@ -184,7 +190,12 @@ def _configure_sqlite(eng):
     return eng
 
 
-DB_URL = "sqlite:///diabetes_helper.db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "cgm_assistant.sqlite3"
+DB_URL = os.environ.get(
+    "CGM_DATABASE_URL",
+    f"sqlite:///{DEFAULT_DATABASE_PATH}",
+)
 engine = _configure_sqlite(create_engine(DB_URL, echo=False))
 Session = sessionmaker(bind=engine)
 

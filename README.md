@@ -2,10 +2,10 @@
 
 Прототип модульного монолита для анализа исторических показателей глюкозы и
 информационных уведомлений. API принимает измерения, вызывает демонстрационный
-анализатор из `external/hackathon_event_analyzer/` и временно хранит события и
-состояние анализа в оперативной памяти. React Dashboard показывает историю
-измерений, события алгоритма и отдельные информационные уведомления.
-Постоянная база данных и Web Push пока не реализованы.
+анализатор из `external/hackathon_event_analyzer/` и сохраняет измерения,
+события, состояние анализа и уведомления в SQLite на основе моделей
+`external/kirill_db/`. React Dashboard показывает историю измерений, события
+алгоритма и отдельные информационные уведомления. Web Push не реализован.
 
 ## Структура
 
@@ -20,7 +20,7 @@
 - `external/hackathon_event_analyzer/` — исходный модуль алгоритма и его тесты.
 - `frontend/src/` — React Dashboard, API-клиент, типы, компоненты и стили.
 - `frontend/vite.config.ts` — dev proxy `/api` на локальный FastAPI.
-- `backend/app/db/` — место для будущей конфигурации БД; пока не используется.
+- `backend/app/db/database.py` — конфигурация SQLite и фабрика сессий.
 - `frontend/` — React Dashboard на Vite и TypeScript.
 - `simulator/` — модуль симулятора, разрабатываемый отдельно.
 - `data/` — данные проекта.
@@ -36,6 +36,11 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m uvicorn app.main:app --app-dir backend --reload
 ```
+
+По умолчанию рабочая БД находится в `data/cgm_assistant.sqlite3`. Можно задать
+другой SQLAlchemy URL через `CGM_DATABASE_URL`. Историческая
+`diabetes_helper.db` не используется. Для разработки и тестов установите
+дополнительные зависимости командой `python -m pip install -r requirements-dev.txt`.
 
 Проверка состояния:
 
@@ -82,15 +87,22 @@ curl -X POST \
   http://127.0.0.1:8000/api/v1/notifications/NOTIFICATION_ID/acknowledge
 ```
 
-Измерения, события, состояние анализатора и уведомления хранятся только в
-оперативной памяти процесса и теряются при перезапуске. Контракты API и анализатора
-описаны в [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) и
+Измерения, события, состояние анализатора и уведомления сохраняются между
+перезапусками. Контракты API и анализатора описаны в
+[`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) и
 [`docs/ALGORITHM_CONTRACT.md`](docs/ALGORITHM_CONTRACT.md).
 
 ### Тесты
 
 ```bash
 PYTHONPATH=backend python -m unittest discover -s tests -v
+```
+
+Тесты исходной SQLAlchemy-схемы запускаются из её каталога:
+
+```bash
+cd external/kirill_db
+python -m pytest -v
 ```
 
 Оригинальные тесты внешнего алгоритма запускаются отдельно:
