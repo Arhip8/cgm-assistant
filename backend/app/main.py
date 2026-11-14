@@ -12,30 +12,38 @@ from app.api.routes.events import router as events_router
 from app.api.routes.health import router as health_router
 from app.api.routes.notifications import router as notifications_router
 from app.api.routes.readings import router as readings_router
+from app.api.routes.simulation import router as simulation_router
 from app.db.database import Database, database
 from app.services.reading_processor import ReadingProcessor
+from app.services.simulation_controller import SimulationController
 
 
 def create_app(database_override: Database | None = None) -> FastAPI:
     active_database = database_override or database
+    processor = ReadingProcessor(database=active_database)
+    simulation_controller = SimulationController(processor=processor)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_database.initialize()
-        yield
+        simulation_controller.recover()
+        try:
+            yield
+        finally:
+            simulation_controller.shutdown()
 
     application = FastAPI(
         title="CGM Assistant API",
         version="0.1.0",
         lifespan=lifespan,
     )
-    application.state.reading_processor = ReadingProcessor(
-        database=active_database
-    )
+    application.state.reading_processor = processor
+    application.state.simulation_controller = simulation_controller
     application.include_router(health_router)
     application.include_router(readings_router)
     application.include_router(events_router)
     application.include_router(notifications_router)
+    application.include_router(simulation_router)
 
     @application.exception_handler(RequestValidationError)
     def handle_request_validation_error(
