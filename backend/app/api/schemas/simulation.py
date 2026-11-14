@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,3 +30,12 @@ class SimulationStatus(BaseModel):
     current_source_index: int
     speed_multiplier: float
     error: str | None
+
+
+class SimulationRunSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    status: str
+    started_at: datetime
+    processed_readings: int

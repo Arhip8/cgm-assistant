@@ -5,6 +5,7 @@ import type { SimulationAction, SimulationState } from "../types/api";
 
 interface SimulationControlPanelProps {
   onRunIdChange: (runId: string) => void;
+  sharedError?: string | null;
 }
 
 const SPEED_OPTIONS = [1, 10, 60, 300, 3600] as const;
@@ -26,8 +27,10 @@ const ACTION_LABELS: Record<SimulationAction, string> = {
 
 export function SimulationControlPanel({
   onRunIdChange,
+  sharedError,
 }: SimulationControlPanelProps) {
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(60);
+  const [confirmRestart, setConfirmRestart] = useState(false);
   const simulation = useSimulationControl(onRunIdChange);
   const speedRestored = useRef(false);
   const status = simulation.status;
@@ -41,6 +44,9 @@ export function SimulationControlPanel({
         )
       : 0;
   const disabled = simulation.loading || simulation.pendingAction !== null;
+  const canResume =
+    Boolean(status?.run_id) &&
+    (status?.processed_readings ?? 0) < (status?.total_readings ?? 0);
 
   useEffect(() => {
     if (speedRestored.current || !status) return;
@@ -50,36 +56,28 @@ export function SimulationControlPanel({
     }
   }, [status]);
 
-  const run = (action: SimulationAction) => {
-    void simulation.runAction(
+  const run = async (action: SimulationAction) => {
+    await simulation.runAction(
       action,
       action === "start" ? speedMultiplier : undefined,
     );
   };
 
+  const restart = async () => {
+    setConfirmRestart(false);
+    await run("start");
+  };
+
   return (
     <section className="panel simulation-panel" aria-labelledby="simulation-title">
       <div className="simulation-heading">
-        <div>
-          <p className="eyebrow">ИСТОРИЧЕСКИЕ ДАННЫЕ</p>
-          <h2 id="simulation-title">Управление симуляцией</h2>
-        </div>
+        <h2 id="simulation-title">Симуляция</h2>
         <span className={`simulation-state simulation-state-${state}`}>
-          <span className="simulation-state-dot" aria-hidden="true" />
-          {simulation.loading ? "Загрузка состояния…" : STATE_LABELS[state]}
+          {simulation.loading ? "Загрузка…" : STATE_LABELS[state]}
         </span>
       </div>
 
       <div className="simulation-progress">
-        <div className="simulation-progress-meta">
-          <div className="simulation-run-id">
-            <span>Запуск</span>
-            <strong title={status?.run_id ?? "Не создан"}>
-              {status?.run_id ?? "Не создан"}
-            </strong>
-          </div>
-          <strong className="simulation-percent">{percent}%</strong>
-        </div>
         <div
           className="simulation-progress-track"
           role="progressbar"
@@ -91,14 +89,13 @@ export function SimulationControlPanel({
           <span style={{ width: `${percent}%` }} />
         </div>
         <div className="simulation-counts">
+          <strong>
+            {status?.processed_readings.toLocaleString("ru-RU") ?? 0}
+          </strong>
           <span>
-            Обработано{" "}
-            <strong>{status?.processed_readings.toLocaleString("ru-RU") ?? 0}</strong>
+            из {status?.total_readings.toLocaleString("ru-RU") ?? 0} измерений
           </span>
-          <span>
-            Всего{" "}
-            <strong>{status?.total_readings.toLocaleString("ru-RU") ?? 0}</strong>
-          </span>
+          <strong className="simulation-percent">{percent}%</strong>
         </div>
       </div>
 
@@ -123,55 +120,123 @@ export function SimulationControlPanel({
         </fieldset>
 
         <div className="simulation-actions" aria-label="Команды симуляции">
-          <button
-            type="button"
-            className="simulation-action simulation-action-primary"
-            disabled={disabled || isActive}
-            onClick={() => run("start")}
-          >
-            {simulation.pendingAction === "start" ? "Запуск…" : ACTION_LABELS.start}
-          </button>
-          <button
-            type="button"
-            className="simulation-action"
-            disabled={disabled || state !== "running"}
-            onClick={() => run("pause")}
-          >
-            {simulation.pendingAction === "pause" ? "Пауза…" : ACTION_LABELS.pause}
-          </button>
-          <button
-            type="button"
-            className="simulation-action"
-            disabled={
-              disabled ||
-              !(state === "paused" || state === "stopped" || state === "error")
-            }
-            onClick={() => run("resume")}
-          >
-            {simulation.pendingAction === "resume"
-              ? "Продолжение…"
-              : ACTION_LABELS.resume}
-          </button>
-          <button
-            type="button"
-            className="simulation-action simulation-action-stop"
-            disabled={disabled || !(state === "running" || state === "paused")}
-            onClick={() => run("stop")}
-          >
-            {simulation.pendingAction === "stop" ? "Остановка…" : ACTION_LABELS.stop}
-          </button>
+          {state === "idle" && (
+            <button
+              type="button"
+              className="simulation-action simulation-action-primary"
+              disabled={disabled}
+              onClick={() => run("start")}
+            >
+              {simulation.pendingAction === "start" ? "Запуск…" : ACTION_LABELS.start}
+            </button>
+          )}
+          {state === "running" && (
+            <>
+              <button
+                type="button"
+                className="simulation-action simulation-action-primary"
+                disabled={disabled}
+                onClick={() => run("pause")}
+              >
+                {simulation.pendingAction === "pause" ? "Пауза…" : ACTION_LABELS.pause}
+              </button>
+              <button
+                type="button"
+                className="simulation-action simulation-action-stop"
+                disabled={disabled}
+                onClick={() => run("stop")}
+              >
+                {simulation.pendingAction === "stop" ? "Остановка…" : ACTION_LABELS.stop}
+              </button>
+            </>
+          )}
+          {(state === "paused" || state === "stopped" || state === "error") &&
+            canResume && (
+              <>
+                <button
+                  type="button"
+                  className="simulation-action simulation-action-primary"
+                  disabled={disabled}
+                  onClick={() => run("resume")}
+                >
+                  {simulation.pendingAction === "resume"
+                    ? "Продолжение…"
+                    : ACTION_LABELS.resume}
+                </button>
+                {state === "paused" && (
+                  <button
+                    type="button"
+                    className="simulation-action simulation-action-stop"
+                    disabled={disabled}
+                    onClick={() => run("stop")}
+                  >
+                    {simulation.pendingAction === "stop"
+                      ? "Остановка…"
+                      : ACTION_LABELS.stop}
+                  </button>
+                )}
+              </>
+            )}
+          {(state === "stopped" || state === "completed" || state === "error") && (
+            <button
+              type="button"
+              className="simulation-action simulation-action-primary"
+              disabled={disabled}
+              onClick={() => setConfirmRestart(true)}
+            >
+              Начать заново
+            </button>
+          )}
         </div>
       </div>
 
-      {(simulation.error || status?.error) && (
-        <p className="simulation-error" role="alert">
-          {simulation.error ?? status?.error}
-        </p>
+      {confirmRestart && (
+        <div
+          className="restart-confirmation"
+          role="dialog"
+          aria-labelledby="restart-confirmation-title"
+        >
+          <div className="restart-confirmation-content">
+            <strong id="restart-confirmation-title">Начать новый сеанс?</strong>
+            <p>
+              Симуляция начнётся с первого измерения в новом сеансе. Данные
+              предыдущего сеанса останутся сохранены.
+            </p>
+            <div className="restart-confirmation-actions">
+              <button
+                className="simulation-action"
+                type="button"
+                disabled={disabled}
+                onClick={() => setConfirmRestart(false)}
+              >
+                Отмена
+              </button>
+              <button
+                className="simulation-action simulation-action-primary"
+                type="button"
+                disabled={disabled}
+                onClick={() => void restart()}
+              >
+                {simulation.pendingAction === "start" ? "Запуск…" : "Начать"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
+      {(simulation.error || status?.error) &&
+        (simulation.error ?? status?.error) !== sharedError && (
+          <p className="simulation-error" role="alert">
+            {simulation.error ?? status?.error}
+          </p>
+        )}
       {!simulation.error && simulation.pendingAction && (
         <p className="simulation-hint" aria-live="polite">
           Выполняется команда «{ACTION_LABELS[simulation.pendingAction]}»…
         </p>
+      )}
+      {state === "completed" && (
+        <p className="simulation-complete">Все измерения обработаны</p>
       )}
     </section>
   );

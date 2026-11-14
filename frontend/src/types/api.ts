@@ -52,4 +52,11 @@ export interface SimulationStatus {
   error: string | null;
 }
 
+export interface SimulationRunSummary {
+  run_id: string;
+  status: string;
+  started_at: string;
+  processed_readings: number;
+}
+
 export type SimulationAction = "start" | "pause" | "resume" | "stop";

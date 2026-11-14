@@ -199,6 +199,174 @@ class SimulationControlApiTests(unittest.TestCase):
             stopped["processed_readings"],
         )
 
+    def test_start_after_stop_creates_new_run_without_mixing_history(self) -> None:
+        self.write_readings(
+            [
+                ("2024-01-01 00:00:00", "10.2"),
+                ("2024-01-01 00:05:00", "10.3"),
+                ("2024-01-01 00:10:00", "9.5"),
+            ]
+        )
+        first_status, first = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.assertEqual(first_status, 200)
+        first_run_id = first["run_id"]
+        self.assertEqual(first["current_source_index"], 0)
+        self.wait_for_status("running", processed_at_least=1)
+
+        stopped_status, stopped = self.request(
+            "/api/v1/simulation/stop",
+            method="POST",
+        )
+        self.assertEqual(stopped_status, 200)
+        self.assertEqual(stopped["status"], "stopped")
+        _, first_readings = self.get(
+            f"/api/v1/readings?{urlencode({'run_id': first_run_id})}"
+        )
+        _, first_events = self.get(
+            f"/api/v1/events?{urlencode({'run_id': first_run_id})}"
+        )
+        _, first_notifications = self.get(
+            f"/api/v1/notifications?{urlencode({'run_id': first_run_id})}"
+        )
+        self.assertEqual([reading["source_index"] for reading in first_readings], [0])
+        self.assertTrue(first_events)
+        self.assertTrue(first_notifications)
+
+        second_status, second = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.assertEqual(second_status, 200)
+        second_run_id = second["run_id"]
+        self.assertNotEqual(second_run_id, first_run_id)
+        self.assertEqual(second["current_source_index"], 0)
+        self.wait_for_status("running", processed_at_least=1)
+
+        busy_status, busy = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.assertEqual(busy_status, 409)
+        self.assertIn("уже запущена", busy["detail"])
+
+        _, second_readings = self.get(
+            f"/api/v1/readings?{urlencode({'run_id': second_run_id})}"
+        )
+        _, second_events = self.get(
+            f"/api/v1/events?{urlencode({'run_id': second_run_id})}"
+        )
+        _, second_notifications = self.get(
+            f"/api/v1/notifications?{urlencode({'run_id': second_run_id})}"
+        )
+        self.assertEqual([reading["source_index"] for reading in second_readings], [0])
+        self.assertTrue(second_events)
+        self.assertTrue(second_notifications)
+
+        _, preserved_readings = self.get(
+            f"/api/v1/readings?{urlencode({'run_id': first_run_id})}"
+        )
+        _, preserved_events = self.get(
+            f"/api/v1/events?{urlencode({'run_id': first_run_id})}"
+        )
+        _, preserved_notifications = self.get(
+            f"/api/v1/notifications?{urlencode({'run_id': first_run_id})}"
+        )
+        self.assertEqual(preserved_readings, first_readings)
+        self.assertEqual(preserved_events, first_events)
+        self.assertEqual(preserved_notifications, first_notifications)
+
+        history_status, history = self.get("/api/v1/simulation/runs?limit=2")
+        self.assertEqual(history_status, 200)
+        self.assertEqual([item["run_id"] for item in history], [second_run_id, first_run_id])
+        self.assertEqual(
+            self.get("/api/v1/simulation/runs?limit=101")[0],
+            422,
+        )
+
+    def test_completed_simulation_can_start_a_new_run(self) -> None:
+        self.write_readings(
+            [
+                ("2024-01-01 00:00:00", "5.5"),
+                ("2024-01-01 00:01:00", "5.6"),
+            ]
+        )
+        _, first = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 3600},
+        )
+        completed = self.wait_for_status(
+            "completed",
+            processed_at_least=2,
+            timeout=10,
+        )
+        self.assertEqual(completed["run_id"], first["run_id"])
+
+        restarted_status, restarted = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 3600},
+        )
+        self.assertEqual(restarted_status, 200)
+        self.assertNotEqual(restarted["run_id"], first["run_id"])
+        self.assertEqual(restarted["current_source_index"], 0)
+        self.wait_for_status("running", processed_at_least=1)
+
+        _, old_readings = self.get(
+            f"/api/v1/readings?{urlencode({'run_id': first['run_id']})}"
+        )
+        self.assertEqual([item["source_index"] for item in old_readings], [0, 1])
+
+    def test_stop_while_paused_quiesces_worker_before_restart(self) -> None:
+        _, first = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.wait_for_status("running", processed_at_least=1)
+        paused_status, paused = self.request(
+            "/api/v1/simulation/pause",
+            method="POST",
+        )
+        self.assertEqual(paused_status, 200)
+        self.assertEqual(paused["status"], "paused")
+
+        busy_status, busy = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.assertEqual(busy_status, 409)
+        self.assertIn("приостановлена", busy["detail"])
+
+        stopped_status, stopped = self.request(
+            "/api/v1/simulation/stop",
+            method="POST",
+        )
+        self.assertEqual(stopped_status, 200)
+        self.assertEqual(stopped["status"], "stopped")
+
+        restarted_status, restarted = self.request(
+            "/api/v1/simulation/start",
+            method="POST",
+            body={"speed_multiplier": 1},
+        )
+        self.assertEqual(restarted_status, 200)
+        self.assertNotEqual(restarted["run_id"], first["run_id"])
+        self.assertEqual(restarted["current_source_index"], 0)
+        self.wait_for_status("running", processed_at_least=1)
+
+        _, first_readings = self.get(
+            f"/api/v1/readings?{urlencode({'run_id': first['run_id']})}"
+        )
+        self.assertEqual([item["source_index"] for item in first_readings], [0])
+
     def test_restart_recovers_saved_index_and_completes_without_duplicates(self) -> None:
         self.write_readings(
             [
