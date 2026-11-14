@@ -119,6 +119,10 @@ class SimulationController:
         with self._lock:
             if self._status in ("running", "paused"):
                 raise SimulationBusyError("Симуляция уже запущена или приостановлена")
+            if self._thread is not None and self._thread.is_alive():
+                raise SimulationBusyError(
+                    "Предыдущий запуск ещё завершает обработку. Повторите попытку позже"
+                )
 
             fingerprint = self._dataset_fingerprint()
             run_id = f"server-sim-{fingerprint}-{uuid4().hex}"
@@ -205,10 +209,26 @@ class SimulationController:
                 self._simulator.stop()
             self._status = "stopped"
             assert self._run_id is not None
-            self._processed_readings = self._processor.simulation_progress(self._run_id)
+            run_id = self._run_id
+            thread = self._thread
+            self._processed_readings = self._processor.simulation_progress(run_id)
             if self._processed_readings >= self._total_readings:
                 self._status = "completed"
-            self._processor.set_simulation_status(self._run_id, self._status)
+            self._processor.set_simulation_status(run_id, self._status)
+
+        if thread is not None and thread.is_alive():
+            thread.join()
+
+        with self._lock:
+            if self._run_id == run_id:
+                self._processed_readings = self._processor.simulation_progress(run_id)
+                if self._status != "error":
+                    self._status = (
+                        "completed"
+                        if self._processed_readings >= self._total_readings
+                        else "stopped"
+                    )
+                    self._processor.set_simulation_status(run_id, self._status)
             return self._status_snapshot_locked()
 
     def status(self) -> dict[str, Any]:

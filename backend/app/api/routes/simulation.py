@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from app.api.schemas.simulation import SimulationStatus, StartSimulationRequest
+from app.api.schemas.simulation import (
+    SimulationRunSummary,
+    SimulationStatus,
+    StartSimulationRequest,
+)
 from app.services.simulation_controller import (
     SimulationBusyError,
     SimulationConfigurationError,
@@ -10,6 +14,18 @@ from app.services.simulation_controller import (
 
 
 router = APIRouter(prefix="/api/v1/simulation", tags=["simulation"])
+
+
+@router.get("/runs", response_model=list[SimulationRunSummary])
+def list_simulation_runs(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[SimulationRunSummary]:
+    processor = request.app.state.reading_processor
+    return [
+        SimulationRunSummary.model_validate(item)
+        for item in processor.list_server_simulations(limit=limit)
+    ]
 
 
 @router.post("/start", response_model=SimulationStatus)

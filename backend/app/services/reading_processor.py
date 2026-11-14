@@ -540,5 +540,34 @@ class ReadingProcessor:
                     simulation_run.speed_factor or DEFAULT_SPEED_MULTIPLIER,
                 )
 
+    def list_server_simulations(self, limit: int = 20) -> list[dict[str, Any]]:
+        if self._database is None:
+            raise RuntimeError("Server simulations require persistent storage")
+        models = _database_models()
+        with self._lock:
+            with self._database.session() as session:
+                simulations = session.execute(
+                    select(models.SimulationRun)
+                    .where(models.SimulationRun.dataset_name.like("server-sim-%"))
+                    .order_by(
+                        models.SimulationRun.started_at.desc(),
+                        models.SimulationRun.id.desc(),
+                    )
+                    .limit(limit)
+                ).scalars()
+                return [
+                    {
+                        "run_id": item.dataset_name,
+                        "status": item.status,
+                        "started_at": (
+                            item.started_at.replace(tzinfo=timezone.utc)
+                            if item.started_at.tzinfo is None
+                            else item.started_at
+                        ),
+                        "processed_readings": item.source_position,
+                    }
+                    for item in simulations
+                ]
+
 
 reading_processor = ReadingProcessor(database=database)

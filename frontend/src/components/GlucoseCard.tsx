@@ -1,14 +1,16 @@
 import type { Reading } from "../types/api";
+import { DEMO_GLUCOSE_RANGE, formatGlucose } from "../constants";
 
 interface GlucoseCardProps {
   reading: Reading | null;
+  previousReading: Reading | null;
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat("ru-RU", {
-  day: "numeric",
-  month: "long",
   hour: "2-digit",
   minute: "2-digit",
+  day: "numeric",
+  month: "short",
 });
 
 export function formatDateTime(value: string): string {
@@ -18,52 +20,57 @@ export function formatDateTime(value: string): string {
     : dateTimeFormatter.format(date);
 }
 
-export function GlucoseCard({ reading }: GlucoseCardProps) {
+export function GlucoseCard({ reading, previousReading }: GlucoseCardProps) {
+  const rangeState = reading
+    ? reading.glucose_mmol_l < DEMO_GLUCOSE_RANGE.lower
+      ? "below"
+      : reading.glucose_mmol_l > DEMO_GLUCOSE_RANGE.upper
+        ? "above"
+        : "within"
+    : null;
+  const change =
+    reading && previousReading
+      ? reading.glucose_mmol_l - previousReading.glucose_mmol_l
+      : null;
+
   return (
     <section className="panel glucose-card" aria-labelledby="latest-reading-title">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">ПОСЛЕДНЕЕ ИЗМЕРЕНИЕ</p>
-          <h2 id="latest-reading-title">Уровень глюкозы</h2>
-        </div>
-        <span className="metric-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 3.5s-6.5 7-6.5 11.2a6.5 6.5 0 0 0 13 0C18.5 10.5 12 3.5 12 3.5Z"
-              stroke="currentColor"
-              strokeWidth="1.7"
-            />
-            <path
-              d="M9 15.5c.3 1.4 1.2 2.2 2.5 2.5"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-            />
-          </svg>
-        </span>
-      </div>
-
+      <h2 id="latest-reading-title">Глюкоза</h2>
       {reading ? (
         <>
           <div className="glucose-value">
-            <span>{reading.glucose_mmol_l.toFixed(1)}</span>
+            <span>{formatGlucose(reading.glucose_mmol_l)}</span>
             <span className="glucose-unit">ммоль/л</span>
           </div>
-          <div className="reading-meta">
-            <span className="meta-dot" />
+          <div className="reading-details">
             <time dateTime={reading.measured_at}>
               {formatDateTime(reading.measured_at)}
             </time>
-            <span className="meta-divider">·</span>
-            <span>измерение #{reading.source_index}</span>
+            <span className={`range-status range-${rangeState}`}>
+              {rangeState === "below"
+                ? "Ниже демодиапазона"
+                : rangeState === "above"
+                  ? "Выше демодиапазона"
+                  : "В демодиапазоне"}
+            </span>
           </div>
+          {change !== null && (
+            <p className={`reading-change ${change > 0 ? "change-up" : change < 0 ? "change-down" : ""}`}>
+              {change > 0 ? "↑" : change < 0 ? "↓" : "→"}{" "}
+              {change > 0 ? "+" : ""}
+              {formatGlucose(change)} к предыдущему измерению
+            </p>
+          )}
         </>
       ) : (
         <div className="empty-reading">
-          <span className="empty-reading-value">—</span>
-          <span>Пока нет измерений для этого сеанса</span>
+          <span>— ммоль/л</span>
+          <span>Ожидание измерений</span>
         </div>
       )}
+      <p className="demo-range-caption">
+        Демограницы: {formatGlucose(DEMO_GLUCOSE_RANGE.lower)}–{formatGlucose(DEMO_GLUCOSE_RANGE.upper)} ммоль/л
+      </p>
     </section>
   );
 }

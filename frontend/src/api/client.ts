@@ -3,6 +3,7 @@ import type {
   InformationNotification,
   Reading,
   SimulationAction,
+  SimulationRunSummary,
   SimulationStatus,
 } from "../types/api";
 
@@ -116,6 +117,14 @@ export function getSimulationStatus(
 ): Promise<SimulationStatus> {
   return fetchApi("/api/v1/simulation/status", { signal }).then(
     parseApiResponse<SimulationStatus>,
+  );
+}
+
+export function getSimulationRuns(
+  signal?: AbortSignal,
+): Promise<SimulationRunSummary[]> {
+  return fetchApi("/api/v1/simulation/runs", { signal }).then(
+    parseApiResponse<SimulationRunSummary[]>,
   );
 }
 
