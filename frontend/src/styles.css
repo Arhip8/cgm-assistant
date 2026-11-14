@@ -350,6 +350,278 @@ h2 {
   font-size: 11px;
 }
 
+.simulation-panel {
+  margin-bottom: 18px;
+  padding: 21px 22px;
+}
+
+.simulation-heading,
+.simulation-progress-meta,
+.simulation-counts,
+.simulation-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.simulation-heading {
+  align-items: flex-start;
+}
+
+.simulation-heading .eyebrow {
+  margin-bottom: 5px;
+}
+
+.simulation-heading h2 {
+  margin: 0;
+  color: #2b3d35;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.35px;
+}
+
+.simulation-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #e8eeea;
+  border-radius: 20px;
+  color: #75837b;
+  background: #f7f9f8;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.simulation-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a6b0ab;
+}
+
+.simulation-state-running {
+  border-color: #d7ecdf;
+  color: #347453;
+  background: #f1f8f3;
+}
+
+.simulation-state-running .simulation-state-dot {
+  background: #42a675;
+  box-shadow: 0 0 0 3px rgba(66, 166, 117, 0.12);
+}
+
+.simulation-state-paused,
+.simulation-state-stopped {
+  border-color: #f0e5c9;
+  color: #8d7442;
+  background: #fcf8ed;
+}
+
+.simulation-state-paused .simulation-state-dot,
+.simulation-state-stopped .simulation-state-dot {
+  background: #c19a42;
+}
+
+.simulation-state-completed {
+  border-color: #d7ecdf;
+  color: #347453;
+  background: #f1f8f3;
+}
+
+.simulation-state-completed .simulation-state-dot {
+  background: #42a675;
+}
+
+.simulation-state-error {
+  border-color: #f0d7d4;
+  color: #97584f;
+  background: #fff8f7;
+}
+
+.simulation-state-error .simulation-state-dot {
+  background: #cf6b62;
+}
+
+.simulation-progress {
+  margin-top: 17px;
+}
+
+.simulation-progress-meta {
+  gap: 12px;
+  color: #8a9690;
+  font-size: 10px;
+}
+
+.simulation-run-id {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.simulation-run-id strong {
+  max-width: min(58vw, 650px);
+  overflow: hidden;
+  color: #53645c;
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simulation-percent {
+  color: #347453;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.simulation-progress-track {
+  height: 7px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #edf2ef;
+}
+
+.simulation-progress-track > span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #42a675, #188a69);
+  transition: width 180ms ease;
+}
+
+.simulation-counts {
+  justify-content: flex-start;
+  gap: 20px;
+  margin-top: 7px;
+  color: #8a9690;
+  font-size: 10px;
+}
+
+.simulation-counts strong {
+  color: #53645c;
+  font-variant-numeric: tabular-nums;
+}
+
+.simulation-controls {
+  align-items: flex-end;
+  margin-top: 17px;
+}
+
+.simulation-speed {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.simulation-speed legend {
+  margin-bottom: 7px;
+  padding: 0;
+  color: #89958e;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.simulation-speed-options {
+  display: flex;
+  gap: 5px;
+}
+
+.simulation-speed-options button {
+  min-width: 44px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e4ebe6;
+  border-radius: 8px;
+  color: #718078;
+  background: #fbfcfb;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.simulation-speed-options button.simulation-speed-selected {
+  border-color: #a9d2bc;
+  color: #347453;
+  background: #eff7f2;
+}
+
+.simulation-speed-options button:focus-visible,
+.simulation-action:focus-visible {
+  outline: 3px solid rgba(24, 138, 105, 0.2);
+  outline-offset: 2px;
+}
+
+.simulation-speed:disabled button {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.simulation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.simulation-action {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #e1e9e4;
+  border-radius: 8px;
+  color: #53645c;
+  background: #fff;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.simulation-action:hover:not(:disabled) {
+  border-color: #b6d6c3;
+  background: #f4f9f6;
+}
+
+.simulation-action-primary {
+  border-color: #188a69;
+  color: #fff;
+  background: #188a69;
+}
+
+.simulation-action-primary:hover:not(:disabled) {
+  border-color: #11684f;
+  background: #11684f;
+}
+
+.simulation-action-stop {
+  color: #9a5d53;
+}
+
+.simulation-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.simulation-error,
+.simulation-hint {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.simulation-error {
+  color: #a14d43;
+}
+
+.simulation-hint {
+  color: #75837b;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -1057,6 +1329,69 @@ h2 {
   .status-main span:not(.status-indicator) {
     max-width: 52vw;
     font-size: 10px;
+  }
+
+  .simulation-panel {
+    padding: 17px 15px;
+  }
+
+  .simulation-heading {
+    gap: 8px;
+  }
+
+  .simulation-heading h2 {
+    font-size: 14px;
+  }
+
+  .simulation-state {
+    max-width: 142px;
+    padding: 6px 8px;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .simulation-progress-meta {
+    font-size: 9px;
+  }
+
+  .simulation-run-id {
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 4px 7px;
+  }
+
+  .simulation-run-id strong {
+    max-width: 66vw;
+  }
+
+  .simulation-counts {
+    gap: 14px;
+    font-size: 9px;
+  }
+
+  .simulation-controls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 13px;
+  }
+
+  .simulation-speed-options {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .simulation-speed-options button {
+    min-width: 0;
+    padding: 0 4px;
+  }
+
+  .simulation-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .simulation-action {
+    padding: 0 8px;
   }
 
   .glucose-card {

@@ -33,3 +33,23 @@ export interface InformationNotification {
   status: NotificationStatus;
   acknowledged_at: string | null;
 }
+
+export type SimulationState =
+  | "idle"
+  | "running"
+  | "paused"
+  | "stopped"
+  | "completed"
+  | "error";
+
+export interface SimulationStatus {
+  run_id: string | null;
+  status: SimulationState;
+  total_readings: number;
+  processed_readings: number;
+  current_source_index: number;
+  speed_multiplier: number;
+  error: string | null;
+}
+
+export type SimulationAction = "start" | "pause" | "resume" | "stop";
