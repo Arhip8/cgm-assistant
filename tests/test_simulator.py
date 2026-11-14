@@ -1,9 +1,10 @@
 import csv
 import io
 import tempfile
+import time
 import unittest
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
@@ -37,6 +38,22 @@ class StopAfterFirstReadingSimulator(FakeGlucoseSimulator):
         if len(self.payloads) == 1:
             self.stop()
         return response
+
+
+class WaitBeforeRequestSimulator(FakeGlucoseSimulator):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.boundary_reached = Event()
+        self.release_boundary = Event()
+        self._blocked_once = False
+
+    def _wait_until_ready(self, delay_seconds):
+        ready = super()._wait_until_ready(delay_seconds)
+        if ready and not self._blocked_once:
+            self._blocked_once = True
+            self.boundary_reached.set()
+            self.release_boundary.wait(timeout=3)
+        return ready
 
 
 class FakeHTTPResponse(io.BytesIO):
@@ -270,6 +287,32 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(
             {payload["run_id"] for payload in simulator.payloads},
             {"simulator-test"},
+        )
+
+    def test_pause_between_wait_and_request_blocks_the_next_reading(self):
+        simulator = WaitBeforeRequestSimulator(
+            self.csv_path,
+            run_id="pause-boundary",
+            timezone_name="Europe/Moscow",
+            responses=[201, 201, 201],
+        )
+        worker = Thread(
+            target=simulator.run_simulation,
+            kwargs={"speed_multiplier": 1_000_000},
+        )
+        worker.start()
+        self.assertTrue(simulator.boundary_reached.wait(timeout=3))
+        simulator.pause()
+        simulator.release_boundary.set()
+        time.sleep(0.05)
+        self.assertEqual(simulator.payloads, [])
+
+        simulator.resume()
+        worker.join(timeout=3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(
+            [payload["source_index"] for payload in simulator.payloads],
+            [0, 1, 2],
         )
 
     def test_log_only_variant_does_not_send_requests(self):

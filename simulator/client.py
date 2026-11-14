@@ -251,6 +251,12 @@ class GlucoseSimulator:
                 self._condition.wait(timeout=remaining)
                 remaining -= max(time.monotonic() - started, 0.0)
 
+    def _begin_request(self) -> bool:
+        with self._condition:
+            while self._paused and not self._stop_requested:
+                self._condition.wait()
+            return not self._stop_requested
+
     def run_simulation(
         self,
         *,
@@ -299,6 +305,9 @@ class GlucoseSimulator:
 
                 reading = self.readings[self.current_index]
                 payload = self.prepare_json_payload(reading)
+                if not self._begin_request():
+                    stopped = True
+                    break
                 try:
                     status_code = self.send_to_api(payload)
                 except SimulatorError:

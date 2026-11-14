@@ -13,6 +13,7 @@ from app.api.schemas.notification import (
     NotificationStatus,
 )
 from app.api.schemas.reading import Reading
+from app.api.schemas.simulation import DEFAULT_SPEED_MULTIPLIER
 from app.db.database import Database, database
 from app.integrations.algorithm import DEMO_RULES, analyze_reading
 from app.services.event_store import InMemoryEventStore, event_store
@@ -440,6 +441,104 @@ class ReadingProcessor:
             with self._database.session() as session:
                 stored = session.get(models.AnalysisState, _internal_run_id(run_id))
                 return self._restore_state(run_id, stored)
+
+    def prepare_simulation_run(
+        self,
+        run_id: str,
+        speed_multiplier: float,
+    ) -> None:
+        if self._database is None:
+            raise RuntimeError("Server simulations require persistent storage")
+        models = _database_models()
+        with self._lock:
+            with self._database.session() as session, session.begin():
+                simulation_run = session.get(
+                    models.SimulationRun,
+                    _internal_run_id(run_id),
+                )
+                if simulation_run is not None:
+                    raise RuntimeError(f"Simulation run already exists: {run_id}")
+                demo_user_id = _demo_user_id()
+                if session.get(models.User, demo_user_id) is None:
+                    session.add(
+                        models.User(
+                            id=demo_user_id,
+                            display_name="CGM Assistant Demo",
+                        )
+                    )
+                session.add(
+                    models.SimulationRun(
+                        id=_internal_run_id(run_id),
+                        user_id=demo_user_id,
+                        dataset_name=run_id,
+                        status="running",
+                        speed_factor=speed_multiplier,
+                        source_position=0,
+                    )
+                )
+
+    def set_simulation_status(
+        self,
+        run_id: str,
+        status: str,
+        speed_multiplier: float | None = None,
+    ) -> None:
+        if self._database is None:
+            raise RuntimeError("Server simulations require persistent storage")
+        models = _database_models()
+        with self._lock:
+            with self._database.session() as session, session.begin():
+                simulation_run = session.get(
+                    models.SimulationRun,
+                    _internal_run_id(run_id),
+                )
+                if simulation_run is None:
+                    raise RuntimeError(f"Simulation run not found: {run_id}")
+                simulation_run.status = status
+                if speed_multiplier is not None:
+                    simulation_run.speed_factor = speed_multiplier
+
+    def simulation_progress(self, run_id: str) -> int:
+        if self._database is None:
+            raise RuntimeError("Server simulations require persistent storage")
+        models = _database_models()
+        with self._lock:
+            with self._database.session() as session:
+                simulation_run = session.get(
+                    models.SimulationRun,
+                    _internal_run_id(run_id),
+                )
+                return (
+                    simulation_run.source_position
+                    if simulation_run is not None
+                    else 0
+                )
+
+    def latest_server_simulation(
+        self,
+    ) -> tuple[str, str, int, float] | None:
+        if self._database is None:
+            raise RuntimeError("Server simulations require persistent storage")
+        models = _database_models()
+        with self._lock:
+            with self._database.session() as session:
+                simulation_run = session.execute(
+                    select(models.SimulationRun)
+                    .where(models.SimulationRun.dataset_name.like("server-sim-%"))
+                    .order_by(
+                        models.SimulationRun.started_at.desc(),
+                        models.SimulationRun.id.desc(),
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+                if simulation_run is None:
+                    return None
+                return (
+                    simulation_run.dataset_name,
+                    simulation_run.status,
+                    simulation_run.source_position,
+                    simulation_run.speed_factor or DEFAULT_SPEED_MULTIPLIER,
+                )
 
 
 reading_processor = ReadingProcessor(database=database)
