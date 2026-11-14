@@ -11,5 +11,5 @@ def list_events(
     request: Request,
     run_id: str | None = Query(default=None, min_length=1),
 ) -> list[AnalysisEvent]:
-    processor: ReadingProcessor = request.app.state.reading_processor
+    processor: ReadingProcessor = request.state.reading_processor
     return processor.list_events(run_id=run_id)

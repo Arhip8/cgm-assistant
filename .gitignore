@@ -31,3 +31,6 @@ data/
 # Local secrets and keys
 *.pem
 *.key
+
+# Public demo: deliberately synthetic, safe to version
+!demo/synthetic.csv

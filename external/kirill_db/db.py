@@ -192,7 +192,9 @@ def _configure_sqlite(eng):
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "cgm_assistant.sqlite3"
-if os.environ.get("CGM_TESTING") == "1":
+if os.environ.get("CGM_PUBLIC_DEMO") == "1":
+    DB_URL = "sqlite:////tmp/cgm-public-demo.sqlite3"
+elif os.environ.get("CGM_TESTING") == "1":
     DB_URL = os.environ.get("CGM_DATABASE_URL", "sqlite:///:memory:")
 else:
     DB_URL = os.environ.get("CGM_DATABASE_URL", f"sqlite:///{DEFAULT_DATABASE_PATH}")

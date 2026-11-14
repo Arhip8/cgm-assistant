@@ -12,6 +12,8 @@ from external.kirill_db import db as kirill_db
 
 class Database:
     def __init__(self, url: str | None = None) -> None:
+        if url is None and os.environ.get("CGM_PUBLIC_DEMO") == "1":
+            url = "sqlite:////tmp/cgm-public-demo.sqlite3"
         if url is None and os.environ.get("CGM_TESTING") == "1":
             url = os.environ.get("CGM_DATABASE_URL", "sqlite:///:memory:")
 

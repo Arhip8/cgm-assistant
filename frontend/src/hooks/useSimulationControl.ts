@@ -38,6 +38,8 @@ export function useSimulationControl(
   }, [onRunIdChange]);
 
   useEffect(() => {
+    const reset = () => { restoredRef.current = false; };
+    window.addEventListener("cgm-session-reset", reset);
     let active = true;
     let requestInFlight = false;
     let timeoutId: number | undefined;
@@ -66,7 +68,7 @@ export function useSimulationControl(
           setLoading(false);
           if (!restoredRef.current) {
             restoredRef.current = true;
-            if (nextStatus.run_id) runIdChangeRef.current(nextStatus.run_id);
+            runIdChangeRef.current(nextStatus.run_id ?? "");
           }
         }
       } catch (pollError) {
@@ -105,6 +107,7 @@ export function useSimulationControl(
     void poll();
 
     return () => {
+      window.removeEventListener("cgm-session-reset", reset);
       active = false;
       controller?.abort();
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);

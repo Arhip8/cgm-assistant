@@ -14,7 +14,7 @@ def create_reading(
     response: Response,
 ) -> Reading:
     try:
-        processor: ReadingProcessor = request.app.state.reading_processor
+        processor: ReadingProcessor = request.state.reading_processor
         created = processor.add_and_analyze(reading)
     except ReadingConflictError as exc:
         raise HTTPException(
@@ -32,5 +32,5 @@ def list_readings(
     request: Request,
     run_id: str | None = Query(default=None, min_length=1),
 ) -> list[Reading]:
-    processor: ReadingProcessor = request.app.state.reading_processor
+    processor: ReadingProcessor = request.state.reading_processor
     return processor.list_readings(run_id=run_id)

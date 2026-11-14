@@ -55,7 +55,9 @@ class SimulationController:
         processor: ReadingProcessor,
         csv_path: str | Path | None = None,
         timezone_name: str | None = None,
+        synthetic: bool = False,
     ) -> None:
+        self.synthetic = synthetic
         configured_path = csv_path or os.environ.get(
             "CGM_SIMULATOR_CSV",
             str(DEFAULT_CSV_PATH),
@@ -292,7 +294,10 @@ class SimulationController:
             raise SimulationConfigurationError(str(exc)) from exc
 
     def _dataset_fingerprint(self) -> str:
-        if KRISTINA_DATA_DIR not in self.csv_path.parents:
+        synthetic_path = (PROJECT_ROOT / "demo" / "synthetic.csv").resolve()
+        if (self.synthetic and self.csv_path != synthetic_path) or (
+            not self.synthetic and KRISTINA_DATA_DIR not in self.csv_path.parents
+        ):
             raise SimulationConfigurationError(
                 "CSV симулятора должен находиться в data/kristina/"
             )

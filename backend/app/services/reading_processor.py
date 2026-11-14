@@ -95,12 +95,14 @@ class ReadingProcessor:
         self,
         *,
         database: Database | None = None,
+        owner_id: str | None = None,
         events: InMemoryEventStore = event_store,
         notifications: InMemoryNotificationService = notification_service,
         readings: InMemoryReadingStore = reading_store,
         rules: Mapping[str, Any] = DEMO_RULES,
         notification_policy: NotificationPolicyConfig = NotificationPolicyConfig(),
     ) -> None:
+        self.owner_id = owner_id
         self._database = database
         self._events = events
         self._notifications = notifications
@@ -168,7 +170,7 @@ class ReadingProcessor:
             self._begin_write_transaction(session)
             simulation_run = session.get(models.SimulationRun, internal_run_id)
             if simulation_run is None:
-                demo_user_id = _demo_user_id()
+                demo_user_id = self.owner_id or _demo_user_id()
                 if session.get(models.User, demo_user_id) is None:
                     session.add(
                         models.User(
@@ -355,6 +357,8 @@ class ReadingProcessor:
                 models.SimulationRun.id == models.GlucoseReading.run_id,
             )
         )
+        if self.owner_id is not None:
+            statement = statement.where(models.SimulationRun.user_id == self.owner_id)
         if run_id is not None:
             statement = statement.where(models.SimulationRun.dataset_name == run_id)
         statement = statement.order_by(
@@ -385,6 +389,8 @@ class ReadingProcessor:
                 models.SimulationRun.id == models.GlucoseEvent.run_id,
             )
         )
+        if self.owner_id is not None:
+            statement = statement.where(models.SimulationRun.user_id == self.owner_id)
         if run_id is not None:
             statement = statement.where(models.SimulationRun.dataset_name == run_id)
         statement = statement.order_by(
@@ -429,6 +435,8 @@ class ReadingProcessor:
                 models.GlucoseEvent.id == models.Notification.event_id,
             )
         )
+        if self.owner_id is not None:
+            statement = statement.where(models.SimulationRun.user_id == self.owner_id)
         if run_id is not None:
             statement = statement.where(models.SimulationRun.dataset_name == run_id)
         statement = statement.order_by(
@@ -485,6 +493,9 @@ class ReadingProcessor:
             self._begin_write_transaction(session)
             item = session.get(models.Notification, db_id)
             if item is None:
+                raise NotificationNotFoundError(notification_id)
+            owner_run = session.get(models.SimulationRun, item.run_id)
+            if self.owner_id is not None and (owner_run is None or owner_run.user_id != self.owner_id):
                 raise NotificationNotFoundError(notification_id)
             if item.acknowledged_at is None:
                 item.acknowledged_at = datetime.now(timezone.utc)
@@ -629,7 +640,7 @@ class ReadingProcessor:
                 )
                 if simulation_run is not None:
                     raise RuntimeError(f"Simulation run already exists: {run_id}")
-                demo_user_id = _demo_user_id()
+                demo_user_id = self.owner_id or _demo_user_id()
                 if session.get(models.User, demo_user_id) is None:
                     session.add(
                         models.User(
@@ -696,6 +707,7 @@ class ReadingProcessor:
                 simulation_run = session.execute(
                     select(models.SimulationRun)
                     .where(models.SimulationRun.dataset_name.like("server-sim-%"))
+                    .where(models.SimulationRun.user_id == (self.owner_id or _demo_user_id()))
                     .order_by(
                         models.SimulationRun.started_at.desc(),
                         models.SimulationRun.id.desc(),
@@ -720,6 +732,7 @@ class ReadingProcessor:
                 simulations = session.execute(
                     select(models.SimulationRun)
                     .where(models.SimulationRun.dataset_name.like("server-sim-%"))
+                    .where(models.SimulationRun.user_id == (self.owner_id or _demo_user_id()))
                     .order_by(
                         models.SimulationRun.started_at.desc(),
                         models.SimulationRun.id.desc(),

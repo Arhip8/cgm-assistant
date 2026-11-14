@@ -7,6 +7,27 @@ import type {
   SimulationStatus,
 } from "../types/api";
 
+export let publicDemo = false;
+let sessionKey: string | null = null;
+let bootstrap: Promise<void> | null = null;
+
+export function initializeSession(): Promise<void> {
+  if (bootstrap) return bootstrap;
+  bootstrap = (async () => {
+    const response = await fetch("/api/v1/session", {
+      headers: { "X-CGM-Demo": "1" }, credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error("Не удалось открыть демонстрационный сеанс. Попробуйте позже.");
+    const info = await response.json() as { public_demo: boolean; session_key: string | null };
+    publicDemo = info.public_demo;
+    if (sessionKey !== null && info.session_key !== sessionKey) {
+      window.dispatchEvent(new Event("cgm-session-reset"));
+    }
+    sessionKey = info.session_key;
+  })().finally(() => { bootstrap = null; });
+  return bootstrap;
+}
+
 export const BACKEND_UNAVAILABLE_MESSAGE =
   "Нет соединения с сервером. Проверьте, запущен ли FastAPI";
 
@@ -15,10 +36,17 @@ async function fetchApi(
   init?: RequestInit,
 ): Promise<Response> {
   try {
-    return await fetch(path, {
+    const options: RequestInit = {
       ...init,
-      headers: { Accept: "application/json", ...init?.headers },
-    });
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-CGM-Demo": "1", ...init?.headers },
+    };
+    let response = await fetch(path, options);
+    if (response.status === 401) {
+      await initializeSession();
+      response = await fetch(path, options);
+    }
+    return response;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new Error(BACKEND_UNAVAILABLE_MESSAGE);

@@ -1,11 +1,11 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActivityPanel } from "./components/ActivityPanel";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { GlucoseCard } from "./components/GlucoseCard";
 import { SimulationControlPanel } from "./components/SimulationControlPanel";
 import { useDashboardData } from "./hooks/useDashboardData";
-import { BACKEND_UNAVAILABLE_MESSAGE } from "./api/client";
+import { publicDemo, BACKEND_UNAVAILABLE_MESSAGE } from "./api/client";
 
 const GlucoseChart = lazy(() =>
   import("./components/GlucoseChart").then((module) => ({
@@ -14,9 +14,14 @@ const GlucoseChart = lazy(() =>
 );
 
 function App() {
-  const [runId, setRunId] = useState("demo-001");
+  const [runId, setRunId] = useState(publicDemo ? "" : "demo-001");
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const data = useDashboardData(runId);
+  useEffect(() => {
+    const reset = () => { setRunId(""); setActiveRunId(null); };
+    window.addEventListener("cgm-session-reset", reset);
+    return () => window.removeEventListener("cgm-session-reset", reset);
+  }, []);
   const syncActiveRunId = useCallback((nextRunId: string) => {
     setActiveRunId(nextRunId);
     setRunId(nextRunId);
@@ -92,7 +97,7 @@ function App() {
         </div>
 
         <p className="prototype-warning">
-          Демонстрационный прототип. Не для медицинских решений
+          {publicDemo ? "Синтетические данные. Демонстрационный алгоритм. Данные могут исчезнуть после перезапуска сервера. На ×60 сценарий занимает 2–3 минуты: нажмите «Я увидел» после первого уведомления." : "Демонстрационный прототип."} Не для медицинских решений
         </p>
         {data.error && (
           <p className="connection-message" role="alert">

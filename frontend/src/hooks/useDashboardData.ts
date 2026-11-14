@@ -61,6 +61,7 @@ export function useDashboardData(
   );
 
   useEffect(() => {
+    if (!runId) { setData({ ...initialData(runId), loading: false, lastSuccessfulUpdate: new Date() }); return; }
     let active = true;
     let inFlight = false;
     let timeoutId: number | undefined;

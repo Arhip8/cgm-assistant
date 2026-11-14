@@ -14,7 +14,7 @@ def list_notifications(
     request: Request,
     run_id: str | None = Query(default=None, min_length=1),
 ) -> list[InformationNotification]:
-    processor: ReadingProcessor = request.app.state.reading_processor
+    processor: ReadingProcessor = request.state.reading_processor
     return processor.list_notifications(run_id=run_id)
 
 
@@ -27,7 +27,7 @@ def acknowledge_notification(
     request: Request,
 ) -> InformationNotification:
     try:
-        processor: ReadingProcessor = request.app.state.reading_processor
+        processor: ReadingProcessor = request.state.reading_processor
         return processor.acknowledge_notification(notification_id)
     except NotificationNotFoundError as exc:
         raise HTTPException(
