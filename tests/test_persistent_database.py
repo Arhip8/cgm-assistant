@@ -123,6 +123,9 @@ class PersistentDatabaseIntegrationTests(unittest.TestCase):
         recovered = self.processor.state_for(run_id)
         self.assertIsNotNone(recovered)
         self.assertEqual(recovered["band"]["event_id"], events[0].event_id)
+        self.assertTrue(
+            recovered["_notification_policy_state"]["active_range_acknowledged"]
+        )
 
         end = self.make_reading(
             run_id, 1, "2026-11-12T12:05:00+03:00", 9.5
@@ -199,6 +202,7 @@ class PersistentDatabaseIntegrationTests(unittest.TestCase):
         trend_events = [
             event for event in self.processor.list_events(run_id)
             if event.event_type == "demo_rapid_rise"
+            and event.origin == "demonstration_algorithm"
         ]
         self.assertEqual([event.phase.value for event in trend_events], ["started", "ended"])
         self.assertEqual(trend_events[0].event_id, trend_events[1].event_id)
