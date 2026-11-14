@@ -4,6 +4,7 @@ import { DashboardHeader } from "./components/DashboardHeader";
 import { EventsPanel } from "./components/EventsPanel";
 import { GlucoseCard } from "./components/GlucoseCard";
 import { NotificationsPanel } from "./components/NotificationsPanel";
+import { SimulationControlPanel } from "./components/SimulationControlPanel";
 import { StatusPanel } from "./components/StatusPanel";
 import { useDashboardData } from "./hooks/useDashboardData";
 
@@ -51,6 +52,7 @@ function App() {
         </div>
 
         <StatusPanel data={data} runId={runId} />
+        <SimulationControlPanel onRunIdChange={setRunId} />
 
         {data.error && data.readings.length === 0 && !data.lastSuccessfulUpdate && (
           <div className="connection-error" role="alert">
