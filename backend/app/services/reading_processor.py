@@ -23,6 +23,11 @@ from app.services.notification_service import (
     notification_content,
     notification_service,
 )
+from app.services.notification_policy import (
+    POLICY_STATE_KEY,
+    NotificationPolicyConfig,
+    apply_notification_policy,
+)
 from app.services.reading_store import (
     InMemoryReadingStore,
     ReadingConflictError,
@@ -94,12 +99,14 @@ class ReadingProcessor:
         notifications: InMemoryNotificationService = notification_service,
         readings: InMemoryReadingStore = reading_store,
         rules: Mapping[str, Any] = DEMO_RULES,
+        notification_policy: NotificationPolicyConfig = NotificationPolicyConfig(),
     ) -> None:
         self._database = database
         self._events = events
         self._notifications = notifications
         self._readings = readings
         self._rules = deepcopy(dict(rules))
+        self._notification_policy = notification_policy
         self._states: dict[str, dict[str, Any]] = {}
         self._lock = RLock()
 
@@ -135,9 +142,21 @@ class ReadingProcessor:
             raise
 
         if result.status == "processed":
-            self._events.add_many(result.events)
-            self._notifications.process_events(result.events)
-            self._states[reading.run_id] = deepcopy(result.next_state)
+            policy_result = apply_notification_policy(
+                reading=reading,
+                history=history,
+                events=result.events,
+                previous_state=previous_state,
+                algorithm_state=result.next_state,
+                rules=self._rules,
+                config=self._notification_policy,
+            )
+            all_events = [*result.events, *policy_result.generated_events]
+            self._events.add_many(all_events)
+            self._notifications.process_events(policy_result.notifications)
+            next_state = deepcopy(result.next_state)
+            next_state[POLICY_STATE_KEY] = policy_result.state
+            self._states[reading.run_id] = next_state
         return True
 
     def _add_persistently(self, reading: Reading) -> bool:
@@ -146,6 +165,7 @@ class ReadingProcessor:
         internal_run_id = _internal_run_id(reading.run_id)
 
         with self._database.session() as session, session.begin():
+            self._begin_write_transaction(session)
             simulation_run = session.get(models.SimulationRun, internal_run_id)
             if simulation_run is None:
                 demo_user_id = _demo_user_id()
@@ -207,6 +227,17 @@ class ReadingProcessor:
                 state=state,
                 rules=self._rules,
             )
+            policy_result = None
+            if result.status == "processed":
+                policy_result = apply_notification_policy(
+                    reading=reading,
+                    history=history,
+                    events=result.events,
+                    previous_state=state,
+                    algorithm_state=result.next_state,
+                    rules=self._rules,
+                    config=self._notification_policy,
+                )
 
             stored_reading = models.GlucoseReading(
                 run_id=internal_run_id,
@@ -217,9 +248,17 @@ class ReadingProcessor:
             )
             event_models: list[Any] = []
             if result.status == "processed":
-                for event in result.events:
+                assert policy_result is not None
+                notification_event_ids = {
+                    event.event_id for event in policy_result.notifications
+                }
+                for event in [*result.events, *policy_result.generated_events]:
                     stored_event = _event_model(internal_run_id, event)
-                    content = notification_content(event)
+                    content = (
+                        notification_content(event)
+                        if event.event_id in notification_event_ids
+                        else None
+                    )
                     if content is not None:
                         title, body = content
                         stored_event._pending_notifications = [
@@ -230,6 +269,10 @@ class ReadingProcessor:
             new_state = None
             if result.status == "processed":
                 next_state = result.next_state
+                persisted_trend = deepcopy(next_state.get("trend"))
+                if persisted_trend is None:
+                    persisted_trend = {}
+                persisted_trend[POLICY_STATE_KEY] = policy_result.state
                 new_state = models.AnalysisState(
                     run_id=internal_run_id,
                     last_source_index=reading.source_index,
@@ -238,7 +281,7 @@ class ReadingProcessor:
                     ),
                     last_value_mmol_l=next_state.get("last_value_mmol_l"),
                     cur_band=deepcopy(next_state.get("band")),
-                    cur_trend=deepcopy(next_state.get("trend")),
+                    cur_trend=persisted_trend,
                     rise_count=next_state.get("rise_count", 0),
                     fall_count=next_state.get("fall_count", 0),
                     schema_ver=1,
@@ -284,14 +327,21 @@ class ReadingProcessor:
     ) -> dict[str, Any] | None:
         if saved_state is None:
             return None
+        trend_state = deepcopy(saved_state.cur_trend)
+        policy_state = None
+        if isinstance(trend_state, dict) and POLICY_STATE_KEY in trend_state:
+            policy_state = trend_state.pop(POLICY_STATE_KEY)
+            if not trend_state:
+                trend_state = None
         return {
             "run_id": public_run_id,
             "last_measured_at": _iso(saved_state.last_measured_at),
             "last_value_mmol_l": saved_state.last_value_mmol_l,
             "band": deepcopy(saved_state.cur_band),
-            "trend": deepcopy(saved_state.cur_trend),
+            "trend": trend_state,
             "rise_count": saved_state.rise_count,
             "fall_count": saved_state.fall_count,
+            POLICY_STATE_KEY: policy_state,
         }
 
     def list_readings(self, run_id: str | None = None) -> list[Reading]:
@@ -393,14 +443,46 @@ class ReadingProcessor:
             ]
 
     def acknowledge_notification(self, notification_id: str) -> InformationNotification:
+        with self._lock:
+            return self._acknowledge_notification(notification_id)
+
+    def _acknowledge_notification(
+        self,
+        notification_id: str,
+    ) -> InformationNotification:
         if self._database is None:
-            return self._notifications.acknowledge(notification_id)
+            notification = self._notifications.acknowledge(notification_id)
+            state = self._states.get(notification.run_id)
+            policy_state = (
+                state.get(POLICY_STATE_KEY) if state is not None else None
+            )
+            if isinstance(policy_state, dict):
+                event = next(
+                    (
+                        item
+                        for item in self._events.list(run_id=notification.run_id)
+                        if item.event_id == notification.event_id
+                    ),
+                    None,
+                )
+                self._mark_policy_acknowledged(
+                    policy_state,
+                    notification.event_id,
+                    state.get("last_measured_at") if state is not None else None,
+                    (
+                        event.details.get("related_event_ids", [])
+                        if event is not None
+                        else []
+                    ),
+                )
+            return notification
         models = _database_models()
         try:
             db_id = int(notification_id)
         except ValueError as exc:
             raise NotificationNotFoundError(notification_id) from exc
         with self._database.session() as session, session.begin():
+            self._begin_write_transaction(session)
             item = session.get(models.Notification, db_id)
             if item is None:
                 raise NotificationNotFoundError(notification_id)
@@ -411,8 +493,97 @@ class ReadingProcessor:
             event = session.get(models.GlucoseEvent, item.event_id)
             if run is None or event is None:
                 raise NotificationNotFoundError(notification_id)
+            saved_state = session.get(models.AnalysisState, item.run_id)
+            if saved_state is not None:
+                trend_state = deepcopy(saved_state.cur_trend)
+                if not isinstance(trend_state, dict):
+                    trend_state = {}
+                policy_state = trend_state.get(POLICY_STATE_KEY)
+                if not isinstance(policy_state, dict):
+                    policy_state = self._initial_notification_policy_state(
+                        saved_state,
+                        event.event_type,
+                        event.event_uid,
+                    )
+                self._mark_policy_acknowledged(
+                    policy_state,
+                    event.event_uid,
+                    saved_state.last_measured_at,
+                    (event.details or {}).get("related_event_ids", []),
+                )
+                trend_state[POLICY_STATE_KEY] = policy_state
+                saved_state.cur_trend = trend_state
             session.flush()
             return self._notification_schema(item, run.dataset_name, event.event_uid)
+
+    @staticmethod
+    def _mark_policy_acknowledged(
+        policy_state: dict[str, Any],
+        event_id: str,
+        measured_at: datetime | str | None,
+        related_event_ids: list[str] | None = None,
+    ) -> None:
+        if policy_state.get("active_range_event_id") == event_id:
+            policy_state["active_range_acknowledged"] = True
+            policy_state["active_range_ack_measured_at"] = _iso(
+                _as_datetime(measured_at)
+            )
+        acknowledged_event_ids = {event_id, *(related_event_ids or [])}
+        if policy_state.get("latched_trend_event_id") in acknowledged_event_ids:
+            policy_state["latched_trend_acknowledged"] = True
+            policy_state["latched_trend_ack_measured_at"] = _iso(
+                _as_datetime(measured_at)
+            )
+
+    @staticmethod
+    def _initial_notification_policy_state(
+        saved_state: Any,
+        event_type: str,
+        event_id: str,
+    ) -> dict[str, Any]:
+        band = saved_state.cur_band
+        trend = saved_state.cur_trend
+        active_range_type = band.get("event_type") if isinstance(band, dict) else None
+        active_range_event_id = band.get("event_id") if isinstance(band, dict) else None
+        trend_type = trend.get("event_type") if isinstance(trend, dict) else None
+        trend_event_id = trend.get("event_id") if isinstance(trend, dict) else None
+        if event_type in {"demo_rapid_rise", "demo_rapid_fall"}:
+            trend_type = event_type
+            trend_event_id = event_id
+        return {
+            "active_range_type": active_range_type,
+            "active_range_event_id": active_range_event_id,
+            "active_range_acknowledged": (
+                active_range_type == event_type
+                and active_range_event_id == event_id
+            ),
+            "active_range_ack_measured_at": (
+                _iso(saved_state.last_measured_at)
+                if active_range_type == event_type
+                and active_range_event_id == event_id
+                else None
+            ),
+            "range_recovery_count": 0,
+            "latched_trend_type": trend_type,
+            "latched_trend_event_id": trend_event_id,
+            "latched_trend_acknowledged": (
+                trend_event_id == event_id
+                or event_type in {"demo_rapid_rise", "demo_rapid_fall"}
+            ),
+            "latched_trend_ack_measured_at": (
+                _iso(saved_state.last_measured_at)
+                if trend_event_id == event_id
+                or event_type in {"demo_rapid_rise", "demo_rapid_fall"}
+                else None
+            ),
+            "trend_reset_count": 0,
+            "critical_low_latched": False,
+            "low_bypass_recovery_count": 0,
+        }
+
+    def _begin_write_transaction(self, session: Any) -> None:
+        if self._database is not None and self._database.engine.dialect.name == "sqlite":
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
     @staticmethod
     def _notification_schema(

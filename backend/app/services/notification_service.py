@@ -36,6 +36,18 @@ def notification_content(event: AnalysisEvent) -> tuple[str, str] | None:
     rule = _NOTIFICATION_RULES.get(event.event_type)
     if event.phase != EventPhase.STARTED or rule is None:
         return None
+    related_types = event.details.get("related_event_types", [])
+    if (
+        event.event_type == "demo_below_range"
+        and event.details.get("policy_reason") == "demonstration_low_bypass"
+        and "demo_rapid_fall" in related_types
+    ):
+        value = f"{event.glucose_mmol_l:g}"
+        return (
+            "Низкий уровень глюкозы и быстрое снижение",
+            "Зафиксированы низкий уровень глюкозы и быстрое снижение. "
+            f"Значение измерения: {value} ммоль/л.",
+        )
     title, text_template = rule
     return title, text_template.format(value=f"{event.glucose_mmol_l:g}")
 

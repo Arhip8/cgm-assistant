@@ -195,6 +195,10 @@ export function ActivityPanel({
                 const isUnread = notification.status === "unread";
                 const isPending = pendingIds.has(notification.id);
                 const event = eventsById.get(notification.event_id);
+                const relatedEventTypes = event?.details["related_event_types"];
+                const isCombinedLowFall =
+                  Array.isArray(relatedEventTypes) &&
+                  relatedEventTypes.includes("demo_rapid_fall");
 
                 return (
                   <li
@@ -203,16 +207,20 @@ export function ActivityPanel({
                   >
                     <div className="activity-item-heading">
                         <strong>
-                          {event
-                            ? eventLabels[event.event_type] ?? event.event_type
-                            : notification.title}
+                          {isCombinedLowFall
+                            ? notification.title
+                            : event
+                              ? eventLabels[event.event_type] ?? event.event_type
+                              : notification.title}
                         </strong>
                         {isUnread && <span className="new-indicator">Новое</span>}
                       </div>
                       <p>
-                        {event
-                          ? `${formatGlucose(event.glucose_mmol_l)} ммоль/л`
-                          : notification.text}
+                        {isCombinedLowFall
+                          ? notification.text
+                          : event
+                            ? `${formatGlucose(event.glucose_mmol_l)} ммоль/л`
+                            : notification.text}
                       </p>
                       <div className="activity-item-footer">
                         <div className="notification-times">
