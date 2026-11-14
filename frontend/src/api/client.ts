@@ -6,17 +6,67 @@ import type {
   SimulationStatus,
 } from "../types/api";
 
-async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(path, {
-    headers: { Accept: "application/json" },
-    signal,
-  });
+export const BACKEND_UNAVAILABLE_MESSAGE =
+  "Нет соединения с сервером. Проверьте, запущен ли FastAPI";
 
-  if (!response.ok) {
-    throw new Error(`Ошибка API: ${response.status} ${response.statusText}`);
+async function fetchApi(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(path, {
+      ...init,
+      headers: { Accept: "application/json", ...init?.headers },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
+  }
+}
+
+async function getApiError(response: Response): Promise<string> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return `Ошибка API: ${response.status} ${response.statusText}`;
   }
 
+  if (typeof body !== "object" || body === null) {
+    return `Ошибка API: ${response.status} ${response.statusText}`;
+  }
+
+  if ("code" in body && body.code === "BACKEND_UNAVAILABLE") {
+    return BACKEND_UNAVAILABLE_MESSAGE;
+  }
+
+  if ("detail" in body) {
+    const prefix = `Ошибка API ${response.status}: `;
+    if (typeof body.detail === "string") return `${prefix}${body.detail}`;
+    if (Array.isArray(body.detail)) {
+      const message = body.detail
+        .map((item) => {
+          if (typeof item !== "object" || item === null) return String(item);
+          const location = Array.isArray(item.loc) ? item.loc.join(".") : "";
+          const description =
+            typeof item.msg === "string" ? item.msg : "Некорректное значение";
+          return location ? `${location}: ${description}` : description;
+        })
+        .join("; ");
+      return `${prefix}${message}`;
+    }
+  }
+
+  return `Ошибка API: ${response.status} ${response.statusText}`;
+}
+
+async function parseApiResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) throw new Error(await getApiError(response));
   return (await response.json()) as T;
+}
+
+async function getJson<T>(path: string, signal: AbortSignal): Promise<T> {
+  return parseApiResponse<T>(await fetchApi(path, { signal }));
 }
 
 export function getReadings(
@@ -50,84 +100,23 @@ export async function acknowledgeNotification(
   notificationId: string,
   signal?: AbortSignal,
 ): Promise<InformationNotification> {
-  const response = await fetch(
+  const response = await fetchApi(
     `/api/v1/notifications/${encodeURIComponent(notificationId)}/acknowledge`,
     {
       method: "POST",
-      headers: { Accept: "application/json" },
       signal,
     },
   );
 
-  if (!response.ok) {
-    throw new Error(`Не удалось подтвердить уведомление: ${response.status}`);
-  }
-
-  return (await response.json()) as InformationNotification;
-}
-
-async function getApiError(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      "detail" in body
-    ) {
-      const { detail } = body;
-      const prefix = `Ошибка API ${response.status}: `;
-      if (typeof detail === "string") return `${prefix}${detail}`;
-      if (Array.isArray(detail)) {
-        const message = detail
-          .map((item) => {
-            if (typeof item !== "object" || item === null) return String(item);
-            const location = Array.isArray(item.loc)
-              ? item.loc.join(".")
-              : "";
-            const message = typeof item.msg === "string" ? item.msg : "Некорректное значение";
-            return location ? `${location}: ${message}` : message;
-          })
-          .join("; ");
-        return `${prefix}${message}`;
-      }
-    }
-  } catch {
-    // The response may not contain JSON; use its HTTP status below.
-  }
-  return `Ошибка API: ${response.status} ${response.statusText}`;
-}
-
-async function simulationRequest<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      ...init,
-      headers: { Accept: "application/json", ...init?.headers },
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new Error(
-      error instanceof Error
-        ? `Сетевая ошибка: ${error.message}`
-        : "Сетевая ошибка: не удалось связаться с API.",
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(await getApiError(response));
-  }
-  return (await response.json()) as T;
+  return parseApiResponse<InformationNotification>(response);
 }
 
 export function getSimulationStatus(
   signal?: AbortSignal,
 ): Promise<SimulationStatus> {
-  return simulationRequest<SimulationStatus>("/api/v1/simulation/status", {
-    signal,
-  });
+  return fetchApi("/api/v1/simulation/status", { signal }).then(
+    parseApiResponse<SimulationStatus>,
+  );
 }
 
 export function controlSimulation(
@@ -135,7 +124,7 @@ export function controlSimulation(
   speedMultiplier?: number,
   signal?: AbortSignal,
 ): Promise<SimulationStatus> {
-  return simulationRequest<SimulationStatus>(
+  return fetchApi(
     `/api/v1/simulation/${action}`,
     {
       method: "POST",
@@ -146,5 +135,5 @@ export function controlSimulation(
           : undefined,
       signal,
     },
-  );
+  ).then(parseApiResponse<SimulationStatus>);
 }
